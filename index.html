@@ -2984,6 +2984,28 @@ function renderPrevisao(){
     return '<div class="prev-item" style="'+(p.tempoParado?'border:1px solid var(--red);background:rgba(255,71,87,.1);box-shadow:0 0 0 1px rgba(255,71,87,.25)':itemStyle)+'"><div class="prev-left"><div class="prev-icon" style="background:'+colors[p.tipo]+'22;font-size:12px">'+icons[p.tipo]+'</div><div><div class="prev-cargo"><b>'+p.cargo+'</b> &nbsp; <span class="tipo-tag '+p.tipo+'">'+p.tipo+'</span>'+(p.tempoParado?' <span class="badge" style="background:rgba(255,71,87,.18);color:var(--red)">⚠ Falta registrada</span>':(p.pausado?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':(atrasado?' <span class="badge priority">⚠ Atrasado</span>':'')))+(isDiv?' <span class="split-icon" title="Pedido dividido">👥</span>':'')+'</div><div class="prev-collab">'+p.colab+' · '+p.vols+' '+unidade+' · início: '+p.inicio+' · <span class="badge '+p.status+'">'+p.status+'</span></div></div></div><div class="prev-eta"><div class="prev-time" style="color:'+barColor+(atrasado?';font-weight:800':'')+'">'+etaHtml+'</div><div class="prev-label">⏱ Decorrido '+fmtSec(elapsed)+'</div><div class="prev-label">Restam '+fmtSec(rem)+'</div>'+acaoHtml+'</div><div class="prev-bar-row"><div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div></div></div>';
   }).join('');
   const lista=document.getElementById('prev-lista'); if(lista) lista.innerHTML=html;
+  updateExportBtnsState();
+}
+
+/* Deixa os botões de exportar PDF (atrasados/faltas) opacos e não-clicáveis
+   quando não há pedidos atrasados / com falta no momento */
+function updateExportBtnsState(){
+  const btnAtrasados=document.getElementById('prev-pdf-btn');
+  if(btnAtrasados){
+    const vazio=!coletarPedidosAtrasados().length;
+    btnAtrasados.disabled=vazio;
+    btnAtrasados.style.opacity=vazio?'0.4':'1';
+    btnAtrasados.style.cursor=vazio?'not-allowed':'pointer';
+    btnAtrasados.title=vazio?'Nenhum pedido atrasado no momento':'';
+  }
+  const btnFaltas=document.getElementById('prev-pdf-falta-btn');
+  if(btnFaltas){
+    const vazio=!coletarPedidosComFalta().length;
+    btnFaltas.disabled=vazio;
+    btnFaltas.style.opacity=vazio?'0.4':'1';
+    btnFaltas.style.cursor=vazio?'not-allowed':'pointer';
+    btnFaltas.title=vazio?'Nenhum pedido com falta no momento':'';
+  }
 }
 
 /* ---------- exportação em PDF dos pedidos atrasados ---------- */
