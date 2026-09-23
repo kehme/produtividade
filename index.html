@@ -2964,7 +2964,7 @@ function renderPrevisao(){
   const pend=DB.filter(x=>!x.finalizado&&(!busca||matchBuscaPedido(x,busca)));
   const pendEl=document.getElementById('prev-pend');
   if(pendEl) pendEl.textContent=pend.length;
-  const refSec={aberto:130,fechado:90},icons={aberto:'📥',fechado:'📦'},colors={aberto:'var(--cyan)',fechado:'var(--blue)'};
+  const refSec={aberto:180,fechado:180},icons={aberto:'📥',fechado:'📦'},colors={aberto:'var(--cyan)',fechado:'var(--blue)'};
   const pendCalc=pend.map(p=>{
     const sec=p.vols*refSec[p.tipo],elapsed=calcElapsedPedido(p),rem=sec-elapsed;
     return {p,rem};
@@ -3010,7 +3010,7 @@ function updateExportBtnsState(){
 
 /* ---------- exportação em PDF dos pedidos atrasados ---------- */
 function coletarPedidosAtrasados(){
-  const refSec={aberto:130,fechado:90};
+  const refSec={aberto:180,fechado:180};
   const pend=DB.filter(x=>!x.finalizado);
   return pend.map(p=>{
     const sec=p.vols*refSec[p.tipo],elapsed=calcElapsedPedido(p),remRaw=sec-elapsed;
