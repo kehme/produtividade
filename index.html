@@ -127,6 +127,19 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:0
 .participante-row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
 .participante-row input{flex:1}
 .participante-row .btn-del{padding:6px 10px}
+/* Lacunas de "Referências em falta" — mesmo padrão de campo com rótulo usado no resto do app */
+.falta-ref-card{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:5px 6px 5px 8px;margin-bottom:5px;display:flex;align-items:flex-end;gap:6px}
+.falta-ref-card .falta-ref-fields{display:flex;flex:1;gap:6px}
+.falta-ref-card .field{margin-bottom:0}
+.falta-ref-card .field:first-child{flex:2}
+.falta-ref-card .field:last-child{flex:1;max-width:120px}
+.falta-ref-card .field label{font-size:9.5px;margin-bottom:2px;letter-spacing:.4px}
+.falta-ref-card .field input{padding:5px 8px;font-size:12px;border-radius:5px}
+.falta-ref-card .btn-del{flex-shrink:0;padding:5px 9px;line-height:1;font-size:12px}
+#falta-refs-list{overflow-y:auto;padding-right:4px;transition:max-height .15s ease}
+#falta-refs-list::-webkit-scrollbar{width:6px}
+#falta-refs-list::-webkit-scrollbar-track{background:transparent}
+#falta-refs-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 .split-icon{cursor:help}
 .pedido-row{cursor:default}
 .pedido-row.expandable{cursor:pointer}
@@ -695,14 +708,16 @@ create policy "allow anon all" on logiflow_db
     </div>
     <div class="form-row full" style="margin-top:4px;padding-top:10px;border-top:1px solid var(--border)">
       <div class="field">
-        <label style="text-transform:none;font-size:13px;color:var(--red);display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+        <label style="text-transform:none;font-size:11px;color:var(--red);display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
           <input type="checkbox" id="f-falta" onchange="toggleFaltaFin()" style="width:16px;height:16px;accent-color:var(--red);cursor:pointer">
-          ⚠ Registrar falta? <span style="font-size:11px;color:var(--text3);font-weight:400">(encerra a contagem de tempo, mas o pedido fica com pendência até ser resolvido)</span>
+          <span>⚠ Registrar falta? <span style="font-size:9.5px;color:var(--text3);font-weight:400">(encerra a contagem de tempo, mas o pedido fica com pendência até ser resolvido)</span></span>
         </label>
       </div>
     </div>
-    <div class="form-row full" id="falta-motivo-row" style="display:none">
-      <div class="field"><label>Motivo da falta</label><input type="text" id="f-falta-motivo" placeholder="Ex: faltou 3 unidades, avaria..."></div>
+    <div id="falta-refs-box" style="display:none;background:var(--bg);border-radius:8px;padding:12px;margin-bottom:10px">
+      <label style="display:block;margin-bottom:8px">Referências em falta</label>
+      <div id="falta-refs-list"></div>
+      <button type="button" class="btn-sec" style="font-size:12px;margin-top:4px" onclick="addFaltaRefRow()">+ Adicionar referência</button>
     </div>
     <div class="popup-btns">
       <button class="btn-sec" onclick="closeOverlay('ov-fin')">Cancelar</button>
@@ -2195,14 +2210,66 @@ function openFinish(id,memberIdx){
   document.getElementById('outro-time-row').style.display='none';
   document.getElementById('outro-motivo-row').style.display='none';
   document.getElementById('f-falta').checked=false;
-  document.getElementById('f-falta-motivo').value='';
-  document.getElementById('falta-motivo-row').style.display='none';
+  document.getElementById('falta-refs-list').innerHTML='';
+  document.getElementById('falta-refs-list').style.maxHeight='';
+  document.getElementById('falta-refs-box').style.display='none';
   toggleFaltaFin();
   openOverlay('ov-fin');
 }
+// Lacunas de "Registrar falta": 1 lacuna por referência (referência + qtd. de caixas), como no pedido dividido.
+// Visual em card com rótulos (padrão do app); a partir de 3 lacunas a lista ganha barra de rolagem em vez de crescer.
+let faltaRefSeq=0;
+function addFaltaRefRow(){
+  const rid='fref-'+(faltaRefSeq++);
+  const row=document.createElement('div');
+  row.className='falta-ref-card';
+  row.id=rid;
+  row.innerHTML='<div class="falta-ref-fields">'+
+    '<div class="field"><label>Referência</label><input type="text" class="falta-ref" placeholder="Ex: 99001" autocomplete="off"></div>'+
+    '<div class="field"><label>Qtd. caixas</label><input type="number" class="falta-qtd" placeholder="0" min="1"></div>'+
+    '</div>'+
+    '<button type="button" class="btn-del" title="Remover" onclick="removeFaltaRefRow(\''+rid+'\')">✕</button>';
+  document.getElementById('falta-refs-list').appendChild(row);
+  updateFaltaRefsScroll();
+}
+function removeFaltaRefRow(rid){
+  const row=document.getElementById(rid);
+  if(row) row.remove();
+  updateFaltaRefsScroll();
+}
+// Limita a altura visível da lista a 3 lacunas; a partir da 4ª, rola em vez de crescer.
+function updateFaltaRefsScroll(){
+  const list=document.getElementById('falta-refs-list');
+  if(!list) return;
+  const rows=list.children;
+  if(!rows.length){ list.style.maxHeight=''; return; }
+  const visiveis=Math.min(3,rows.length);
+  const gap=5;
+  let h=0;
+  for(let i=0;i<visiveis;i++) h+=rows[i].getBoundingClientRect().height;
+  h+=gap*(visiveis-1);
+  list.style.maxHeight=h+'px';
+}
+// Lê as lacunas. "incompleto" = linha com só um dos dois campos preenchidos.
+function collectFaltaRefs(){
+  const refs=[]; let incompleto=false;
+  document.querySelectorAll('#falta-refs-list .falta-ref-card').forEach(row=>{
+    const ref=row.querySelector('.falta-ref').value.trim();
+    const qtd=parseInt(row.querySelector('.falta-qtd').value)||0;
+    if(!ref && !qtd) return;
+    if(!ref || qtd<=0){ incompleto=true; return; }
+    refs.push({ref,qtd});
+  });
+  return {refs,incompleto};
+}
+function formatFaltaRefs(refs){
+  return (refs||[]).map(r=>r.ref+' ('+r.qtd+(r.qtd===1?' cx':' cxs')+')').join('; ');
+}
 function toggleFaltaFin(){
   const chk=document.getElementById('f-falta').checked;
-  document.getElementById('falta-motivo-row').style.display=chk?'block':'none';
+  document.getElementById('falta-refs-box').style.display=chk?'block':'none';
+  if(chk && !document.getElementById('falta-refs-list').children.length) addFaltaRefRow();
+  if(!chk){ document.getElementById('falta-refs-list').innerHTML=''; document.getElementById('falta-refs-list').style.maxHeight=''; }
   const btn=document.getElementById('btn-fin-confirmar');
   if(chk){
     btn.textContent='⚠ Registrar Falta';
@@ -2406,11 +2473,18 @@ function finalizarPedido(){
   dur=Math.max(0,dur);
   const pausas={almoco,cafe,container:container?{h:contH,m:contM}:null,outro:outro?{h:outroH,m:outroM,motivo:outroMotivo}:null};
   const temFalta=document.getElementById('f-falta').checked;
-  const faltaMotivo=document.getElementById('f-falta-motivo').value.trim();
+  let faltaRefs=null, faltaMotivo=null;
+  if(temFalta){
+    const fr=collectFaltaRefs();
+    if(fr.incompleto){notify('Preencha a referência e a quantidade de caixas em todas as lacunas da falta (ou remova as vazias).','error');return;}
+    if(!fr.refs.length){notify('Informe ao menos uma referência e a quantidade de caixas em falta.','error');return;}
+    faltaRefs=fr.refs;
+    faltaMotivo=formatFaltaRefs(fr.refs); // texto compatível com registros antigos / PDF de faltas
+  }
 
   if(isDiv && finMember!==null){
     if(!p.conclusoes) p.conclusoes={};
-    p.conclusoes[finMember]={termino:term,duracao:dur,pausas,falta:temFalta,faltaMotivo:temFalta?faltaMotivo:null};
+    p.conclusoes[finMember]={termino:term,duracao:dur,pausas,falta:temFalta,faltaMotivo:faltaMotivo,faltaRefs:faltaRefs};
     const totalMembros=getMembros(p).length;
     const concluidos=Object.keys(p.conclusoes).length;
     const algumaFalta=Object.values(p.conclusoes).some(c=>c.falta);
@@ -2439,7 +2513,8 @@ function finalizarPedido(){
     p.pausas=pausas;
     p.tempoParado=true;
     p.falta=temFalta;
-    p.faltaMotivo=temFalta?faltaMotivo:null;
+    p.faltaMotivo=faltaMotivo;
+    p.faltaRefs=faltaRefs;
     if(temFalta){
       p.finalizado=false;
       notify('⚠ Falta registrada no pedido '+p.cargo+'. A contagem de tempo foi encerrada; resolva a falta para finalizar de vez.','warn');
@@ -3038,14 +3113,17 @@ function coletarPedidosComFalta(){
   const out=[];
   DB.filter(x=>!x.finalizado).forEach(p=>{
     if(p.falta){
-      out.push({p, nomes:p.colab||'—', motivo:p.faltaMotivo||'', dur:p.duracao});
+      out.push({p, nomes:p.colab||'—', motivo:p.faltaMotivo||'', refs:p.faltaRefs||null, dur:p.duracao});
     } else if(p.conclusoes){
       const faltosos=Object.keys(p.conclusoes).filter(i=>p.conclusoes[i]&&p.conclusoes[i].falta);
       if(faltosos.length){
         const nomes=faltosos.map(i=>{ let m=null; try{ m=getMembro(p,+i); }catch(e){} return (m&&m.nome)||p.colab||'—'; }).join(', ');
         const motivo=faltosos.map(i=>p.conclusoes[i].faltaMotivo).filter(Boolean).join(' | ');
+        // junta as refs estruturadas de todos os participantes com falta (mantém a ordem)
+        let refs=[]; let temEstruturado=false;
+        faltosos.forEach(i=>{ const fr=p.conclusoes[i].faltaRefs; if(fr&&fr.length){ temEstruturado=true; refs=refs.concat(fr); } });
         const dur=Math.max(...faltosos.map(i=>p.conclusoes[i].duracao||0));
-        out.push({p, nomes, motivo, dur});
+        out.push({p, nomes, motivo, refs:temEstruturado?refs:null, dur});
       }
     }
   });
@@ -3120,8 +3198,17 @@ function exportarFaltasPDF(retryCount){
     doc.text('Total de pedidos com falta: '+faltas.length, margin, y);
     y+=22;
 
-    const head=[['OS','Carregamento','Colaborador','Tipo','Qtd.','Início','Tempo até a falta','Motivo']];
-    const body=faltas.map(({p,nomes,motivo,dur})=>[
+    const head=[['OS','Carregamento','Colaborador','Tipo','Qtd.','Início','Tempo até a falta','Referências em falta']];
+    // Cada referência em falta vai em UMA LINHA própria dentro da célula (uma acima da outra),
+    // em vez de tudo corrido em um parágrafo — assim cabem muitas referências sem estourar a linha.
+    const refsEmLinhas=(refs,motivo)=>{
+      if(refs&&refs.length) return refs.map(r=>r.ref+' — '+r.qtd+(r.qtd===1?' cx':' cxs')).join('\n');
+      if(motivo){ // registros antigos: só existe o texto "ref (n cxs); ref (n cxs)"
+        return motivo.split(/\s*[;|]\s*/).map(x=>x.trim()).filter(Boolean).join('\n');
+      }
+      return 'Não informado';
+    };
+    const body=faltas.map(({p,nomes,motivo,refs,dur})=>[
       p.os||'—',
       p.cargo||'—',
       nomes,
@@ -3129,20 +3216,23 @@ function exportarFaltasPDF(retryCount){
       String(p.vols)+' '+(p.tipo==='fechado'?'cxs':'refs'),
       p.inicio||'—',
       dur!=null?fmtSec(dur):'—',
-      motivo||'Não informado'
+      refsEmLinhas(refs,motivo)
     ]);
 
     doc.autoTable({
       head, body,
       startY:y,
       margin:{left:margin,right:margin},
-      styles:{font:'helvetica',fontSize:8.5,cellPadding:5,textColor:corInk,overflow:'linebreak'},
+      styles:{font:'helvetica',fontSize:8.5,cellPadding:{top:4,bottom:4,left:5,right:5},textColor:corInk,overflow:'linebreak',valign:'top'},
       headStyles:{fillColor:[42,26,27],textColor:[255,230,230],fontStyle:'bold'},
       alternateRowStyles:{fillColor:[250,240,240]},
       columnStyles:{
         6:{halign:'right',fontStyle:'bold',textColor:corRed},
-        7:{cellWidth:110}
-      }
+        7:{cellWidth:120,fontSize:8,cellPadding:{top:4,bottom:4,left:5,right:5}}
+      },
+      // se um pedido tiver tantas referências que não caiba em uma página, a linha continua na página seguinte
+      // (nenhuma referência é cortada/perdida); pedidos menores continuam inteiros na mesma página quando possível
+      rowPageBreak:'auto'
     });
 
     const pageHeight=doc.internal.pageSize.getHeight();
