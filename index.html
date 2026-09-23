@@ -160,8 +160,10 @@ tr:last-child td{border-bottom:none}
 .rank-bar{height:3px;border-radius:2px;margin-top:3px}
 
 /* TIMELINE / PREVISÃO */
-.prev-item{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;background:var(--surface2);border-radius:6px;margin-bottom:4px;gap:6px}
-.prev-left{display:flex;align-items:center;gap:6px}
+.prev-item{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:5px 8px;background:var(--surface2);border-radius:6px;margin-bottom:4px;gap:4px 6px}
+.prev-left{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.prev-bar-row{flex:0 0 100%;width:100%}
+.prev-bar-row .progress-bar{width:98%;height:6px;margin:0 auto 1px}
 .prev-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
 .prev-cargo{font-size:11.5px;font-weight:500}
 .prev-collab{font-size:9.5px;color:var(--text2)}
@@ -383,6 +385,7 @@ button:disabled:hover{background:inherit;color:inherit}
         <span>Pendentes: <b style="color:var(--cyan);font-size:13px" id="prev-pend">0</b></span>
         <input type="text" id="prev-busca" oninput="renderPrevisao()" placeholder="🔎 Buscar por OS, carregamento ou colaborador..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;outline:none;flex:1;min-width:140px">
         <button type="button" id="prev-pdf-btn" onclick="exportarAtrasadosPDF()" style="background:var(--red);border:1px solid var(--red);border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer;white-space:nowrap">📄 Exportar Atrasados PDF</button>
+        <button type="button" id="prev-pdf-falta-btn" onclick="exportarFaltasPDF()" style="background:#ff8c1a;border:1px solid #ff8c1a;border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer;white-space:nowrap">📄 Exportar Faltas PDF</button>
       </div>
       <div id="prev-lista" style="max-height:380px;overflow-y:auto;overflow-x:hidden;padding-right:6px"><div class="empty"><div class="empty-s">Nenhum pedido pendente.</div></div></div>
     </div>
@@ -2903,7 +2906,7 @@ function renderPrevisao(){
     const acaoHtml=(isDiv?membrosAcaoHtml(p):finBtn)+(p.tempoParado?'':'<div style="margin-top:3px">'+pausaBtnHtml(p)+'</div>');
     const unidade=p.tipo==='fechado'?'cxs':'refs';
     const etaHtml=p.tempoParado?'⚠ Falta':(p.pausado?'⏸ Pausado':(atrasado?'⚡ Atrasado':eta));
-    return '<div class="prev-item" style="'+(p.tempoParado?'border:1px solid var(--red);background:rgba(255,71,87,.1);box-shadow:0 0 0 1px rgba(255,71,87,.25)':itemStyle)+'"><div class="prev-left"><div class="prev-icon" style="background:'+colors[p.tipo]+'22;font-size:12px">'+icons[p.tipo]+'</div><div><div class="prev-cargo"><b>'+p.cargo+'</b> &nbsp; <span class="tipo-tag '+p.tipo+'">'+p.tipo+'</span>'+(p.tempoParado?' <span class="badge" style="background:rgba(255,71,87,.18);color:var(--red)">⚠ Falta registrada</span>':(p.pausado?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':(atrasado?' <span class="badge priority">⚠ Atrasado</span>':'')))+(isDiv?' <span class="split-icon" title="Pedido dividido">👥</span>':'')+'</div><div class="prev-collab">'+p.colab+' · '+p.vols+' '+unidade+' · início: '+p.inicio+' · <span class="badge '+p.status+'">'+p.status+'</span></div><div class="progress-bar" style="width:100px;height:3px;margin-top:2px"><div class="progress-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div></div></div><div class="prev-eta"><div class="prev-time" style="color:'+barColor+(atrasado?';font-weight:800':'')+'">'+etaHtml+'</div><div class="prev-label">Restam '+fmtSec(rem)+'</div>'+acaoHtml+'</div></div>';
+    return '<div class="prev-item" style="'+(p.tempoParado?'border:1px solid var(--red);background:rgba(255,71,87,.1);box-shadow:0 0 0 1px rgba(255,71,87,.25)':itemStyle)+'"><div class="prev-left"><div class="prev-icon" style="background:'+colors[p.tipo]+'22;font-size:12px">'+icons[p.tipo]+'</div><div><div class="prev-cargo"><b>'+p.cargo+'</b> &nbsp; <span class="tipo-tag '+p.tipo+'">'+p.tipo+'</span>'+(p.tempoParado?' <span class="badge" style="background:rgba(255,71,87,.18);color:var(--red)">⚠ Falta registrada</span>':(p.pausado?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':(atrasado?' <span class="badge priority">⚠ Atrasado</span>':'')))+(isDiv?' <span class="split-icon" title="Pedido dividido">👥</span>':'')+'</div><div class="prev-collab">'+p.colab+' · '+p.vols+' '+unidade+' · início: '+p.inicio+' · <span class="badge '+p.status+'">'+p.status+'</span></div></div></div><div class="prev-eta"><div class="prev-time" style="color:'+barColor+(atrasado?';font-weight:800':'')+'">'+etaHtml+'</div><div class="prev-label">⏱ Decorrido '+fmtSec(elapsed)+'</div><div class="prev-label">Restam '+fmtSec(rem)+'</div>'+acaoHtml+'</div><div class="prev-bar-row"><div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div></div></div>';
   }).join('');
   const lista=document.getElementById('prev-lista'); if(lista) lista.innerHTML=html;
 }
@@ -3025,6 +3028,137 @@ function exportarAtrasadosPDF(retryCount){
     doc.save(nomeArquivo);
   }catch(err){
     console.error('Erro ao gerar PDF de pedidos atrasados:', err);
+    alert('Ocorreu um erro ao gerar o PDF: '+(err&&err.message?err.message:err));
+  }
+}
+
+/* ---------- exportação em PDF dos pedidos com falta ---------- */
+function coletarPedidosComFalta(){
+  // Falta pendente = pedido não finalizado com falta simples (p.falta) ou com falta registrada por algum participante (pedido dividido)
+  const out=[];
+  DB.filter(x=>!x.finalizado).forEach(p=>{
+    if(p.falta){
+      out.push({p, nomes:p.colab||'—', motivo:p.faltaMotivo||'', dur:p.duracao});
+    } else if(p.conclusoes){
+      const faltosos=Object.keys(p.conclusoes).filter(i=>p.conclusoes[i]&&p.conclusoes[i].falta);
+      if(faltosos.length){
+        const nomes=faltosos.map(i=>{ let m=null; try{ m=getMembro(p,+i); }catch(e){} return (m&&m.nome)||p.colab||'—'; }).join(', ');
+        const motivo=faltosos.map(i=>p.conclusoes[i].faltaMotivo).filter(Boolean).join(' | ');
+        const dur=Math.max(...faltosos.map(i=>p.conclusoes[i].duracao||0));
+        out.push({p, nomes, motivo, dur});
+      }
+    }
+  });
+  return out;
+}
+
+function exportarFaltasPDF(retryCount){
+  retryCount=retryCount||0;
+  const faltas=coletarPedidosComFalta();
+  if(!faltas.length){ notify('Nenhum pedido com falta no momento.','info'); return; }
+
+  const libsFaltando=!(window.jspdf&&window.jspdf.jsPDF)||!(window.jspdf&&window.jspdf.jsPDF&&typeof (new window.jspdf.jsPDF()).autoTable==='function');
+  if(libsFaltando){
+    if(retryCount<2){
+      const btn=document.getElementById('prev-pdf-falta-btn');
+      const originalTxt=btn?btn.textContent:null;
+      if(btn){ btn.textContent='Carregando...'; btn.disabled=true; }
+      kehomeLoadScriptWithFallback([
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+        'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+      ], function(){
+        kehomeLoadScriptWithFallback([
+          'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.min.js',
+          'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js',
+          'https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'
+        ], function(){
+          if(btn){ btn.textContent=originalTxt; btn.disabled=false; }
+          exportarFaltasPDF(retryCount+1);
+        });
+      });
+      return;
+    }
+    alert('Não foi possível carregar o gerador de PDF mesmo após tentar fontes alternativas. Verifique sua conexão com a internet, desative bloqueadores de script/anúncio para este site, ou peça ao TI para liberar os domínios cdnjs.cloudflare.com, cdn.jsdelivr.net e unpkg.com.');
+    return;
+  }
+
+  try{
+    const { jsPDF }=window.jspdf;
+    const doc=new jsPDF({unit:'pt',format:'a4'});
+    if(typeof doc.autoTable!=='function'){
+      alert('Não foi possível carregar o gerador de tabelas do PDF (autoTable). Verifique sua conexão com a internet e tente novamente.');
+      return;
+    }
+    const pageWidth=doc.internal.pageSize.getWidth();
+    const margin=40;
+    const corRed=[255,71,87];
+    const corInk=[30,32,30];
+    const corDim=[110,116,110];
+
+    const agora=new Date();
+    const dataHoraStr=agora.toLocaleDateString('pt-BR')+' '+agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(17);
+    doc.setTextColor(...corInk);
+    doc.text('Relatório de Pedidos com Falta — Ke Home', margin, 52);
+
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...corDim);
+    doc.text('Gerado em '+dataHoraStr, margin, 68);
+
+    doc.setDrawColor(...corRed);
+    doc.setLineWidth(1.2);
+    doc.line(margin, 78, pageWidth-margin, 78);
+
+    let y=98;
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...corInk);
+    doc.text('Total de pedidos com falta: '+faltas.length, margin, y);
+    y+=22;
+
+    const head=[['OS','Carregamento','Colaborador','Tipo','Qtd.','Início','Tempo até a falta','Motivo']];
+    const body=faltas.map(({p,nomes,motivo,dur})=>[
+      p.os||'—',
+      p.cargo||'—',
+      nomes,
+      p.tipo==='fechado'?'Fechado':'Aberto',
+      String(p.vols)+' '+(p.tipo==='fechado'?'cxs':'refs'),
+      p.inicio||'—',
+      dur!=null?fmtSec(dur):'—',
+      motivo||'Não informado'
+    ]);
+
+    doc.autoTable({
+      head, body,
+      startY:y,
+      margin:{left:margin,right:margin},
+      styles:{font:'helvetica',fontSize:8.5,cellPadding:5,textColor:corInk,overflow:'linebreak'},
+      headStyles:{fillColor:[42,26,27],textColor:[255,230,230],fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[250,240,240]},
+      columnStyles:{
+        6:{halign:'right',fontStyle:'bold',textColor:corRed},
+        7:{cellWidth:110}
+      }
+    });
+
+    const pageHeight=doc.internal.pageSize.getHeight();
+    const totalPages=doc.internal.getNumberOfPages();
+    for(let i=1;i<=totalPages;i++){
+      doc.setPage(i);
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...corDim);
+      doc.text('Ke Home Logística · Produtividade de Pedidos', margin, pageHeight-24);
+      doc.text('Página '+i+' de '+totalPages, pageWidth-margin, pageHeight-24, {align:'right'});
+    }
+
+    doc.save('pedidos_com_falta_'+agora.toISOString().slice(0,10)+'.pdf');
+  }catch(err){
+    console.error('Erro ao gerar PDF de pedidos com falta:', err);
     alert('Ocorreu um erro ao gerar o PDF: '+(err&&err.message?err.message:err));
   }
 }
