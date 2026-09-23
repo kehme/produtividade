@@ -5,6 +5,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Produtividade Pedidos Ke Home</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script>
+function kehomeLoadScriptWithFallback(urls, onDone){
+  var i = 0;
+  function tryNext(){
+    if(i >= urls.length){ if(onDone) onDone(false); return; }
+    var url = urls[i++];
+    var s = document.createElement('script');
+    s.src = url;
+    s.onload = function(){ if(onDone) onDone(true); };
+    s.onerror = function(){ tryNext(); };
+    document.head.appendChild(s);
+  }
+  tryNext();
+}
+window.kehomeLibsReady = { jspdf:false, autotable:false };
+kehomeLoadScriptWithFallback([
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+  'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+], function(ok){
+  window.kehomeLibsReady.jspdf = ok;
+  kehomeLoadScriptWithFallback([
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.min.js',
+    'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js',
+    'https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'
+  ], function(ok2){ window.kehomeLibsReady.autotable = ok2; });
+});
+</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -354,6 +382,7 @@ button:disabled:hover{background:inherit;color:inherit}
       <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin:6px 0 12px;align-items:center">
         <span>Pendentes: <b style="color:var(--cyan);font-size:13px" id="prev-pend">0</b></span>
         <input type="text" id="prev-busca" oninput="renderPrevisao()" placeholder="🔎 Buscar por OS, carregamento ou colaborador..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;outline:none;flex:1;min-width:140px">
+        <button type="button" id="prev-pdf-btn" onclick="exportarAtrasadosPDF()" style="background:var(--red);border:1px solid var(--red);border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer;white-space:nowrap">📄 Exportar Atrasados PDF</button>
       </div>
       <div id="prev-lista" style="max-height:380px;overflow-y:auto;overflow-x:hidden;padding-right:6px"><div class="empty"><div class="empty-s">Nenhum pedido pendente.</div></div></div>
     </div>
@@ -2877,6 +2906,127 @@ function renderPrevisao(){
     return '<div class="prev-item" style="'+(p.tempoParado?'border:1px solid var(--red);background:rgba(255,71,87,.1);box-shadow:0 0 0 1px rgba(255,71,87,.25)':itemStyle)+'"><div class="prev-left"><div class="prev-icon" style="background:'+colors[p.tipo]+'22;font-size:12px">'+icons[p.tipo]+'</div><div><div class="prev-cargo"><b>'+p.cargo+'</b> &nbsp; <span class="tipo-tag '+p.tipo+'">'+p.tipo+'</span>'+(p.tempoParado?' <span class="badge" style="background:rgba(255,71,87,.18);color:var(--red)">⚠ Falta registrada</span>':(p.pausado?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':(atrasado?' <span class="badge priority">⚠ Atrasado</span>':'')))+(isDiv?' <span class="split-icon" title="Pedido dividido">👥</span>':'')+'</div><div class="prev-collab">'+p.colab+' · '+p.vols+' '+unidade+' · início: '+p.inicio+' · <span class="badge '+p.status+'">'+p.status+'</span></div><div class="progress-bar" style="width:100px;height:3px;margin-top:2px"><div class="progress-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div></div></div><div class="prev-eta"><div class="prev-time" style="color:'+barColor+(atrasado?';font-weight:800':'')+'">'+etaHtml+'</div><div class="prev-label">Restam '+fmtSec(rem)+'</div>'+acaoHtml+'</div></div>';
   }).join('');
   const lista=document.getElementById('prev-lista'); if(lista) lista.innerHTML=html;
+}
+
+/* ---------- exportação em PDF dos pedidos atrasados ---------- */
+function coletarPedidosAtrasados(){
+  const refSec={aberto:130,fechado:90};
+  const pend=DB.filter(x=>!x.finalizado);
+  return pend.map(p=>{
+    const sec=p.vols*refSec[p.tipo],elapsed=calcElapsedPedido(p),remRaw=sec-elapsed;
+    const atrasado=!p.pausado&&remRaw<=0;
+    return {p,remRaw,atrasado};
+  }).filter(x=>x.atrasado).sort((a,b)=>a.remRaw-b.remRaw);
+}
+
+function exportarAtrasadosPDF(retryCount){
+  retryCount=retryCount||0;
+  const atrasados=coletarPedidosAtrasados();
+  if(!atrasados.length){ notify('Nenhum pedido atrasado no momento.','info'); return; }
+
+  const libsFaltando=!(window.jspdf&&window.jspdf.jsPDF)||!(window.jspdf&&window.jspdf.jsPDF&&typeof (new window.jspdf.jsPDF()).autoTable==='function');
+  if(libsFaltando){
+    if(retryCount<2){
+      const btn=document.getElementById('prev-pdf-btn');
+      const originalTxt=btn?btn.textContent:null;
+      if(btn){ btn.textContent='Carregando...'; btn.disabled=true; }
+      kehomeLoadScriptWithFallback([
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+        'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js'
+      ], function(){
+        kehomeLoadScriptWithFallback([
+          'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.min.js',
+          'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js',
+          'https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'
+        ], function(){
+          if(btn){ btn.textContent=originalTxt; btn.disabled=false; }
+          exportarAtrasadosPDF(retryCount+1);
+        });
+      });
+      return;
+    }
+    alert('Não foi possível carregar o gerador de PDF mesmo após tentar fontes alternativas. Verifique sua conexão com a internet, desative bloqueadores de script/anúncio para este site, ou peça ao TI para liberar os domínios cdnjs.cloudflare.com, cdn.jsdelivr.net e unpkg.com.');
+    return;
+  }
+
+  try{
+    const { jsPDF }=window.jspdf;
+    const doc=new jsPDF({unit:'pt',format:'a4'});
+    if(typeof doc.autoTable!=='function'){
+      alert('Não foi possível carregar o gerador de tabelas do PDF (autoTable). Verifique sua conexão com a internet e tente novamente.');
+      return;
+    }
+    const pageWidth=doc.internal.pageSize.getWidth();
+    const margin=40;
+    const corRed=[255,71,87];
+    const corInk=[30,32,30];
+    const corDim=[110,116,110];
+
+    const agora=new Date();
+    const dataHoraStr=agora.toLocaleDateString('pt-BR')+' '+agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(17);
+    doc.setTextColor(...corInk);
+    doc.text('Relatório de Pedidos Atrasados — Ke Home', margin, 52);
+
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...corDim);
+    doc.text('Gerado em '+dataHoraStr, margin, 68);
+
+    doc.setDrawColor(...corRed);
+    doc.setLineWidth(1.2);
+    doc.line(margin, 78, pageWidth-margin, 78);
+
+    let y=98;
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...corInk);
+    doc.text('Total de pedidos atrasados: '+atrasados.length, margin, y);
+    y+=22;
+
+    const head=[['OS','Carregamento','Colaborador','Tipo','Qtd.','Início','Tempo Decorrido']];
+    const body=atrasados.map(({p,remRaw})=>[
+      p.os||'—',
+      p.cargo||'—',
+      p.colab||'—',
+      p.tipo==='fechado'?'Fechado':'Aberto',
+      String(p.vols)+' '+(p.tipo==='fechado'?'cxs':'refs'),
+      p.inicio||'—',
+      fmtSec(Math.abs(remRaw))
+    ]);
+
+    doc.autoTable({
+      head, body,
+      startY:y,
+      margin:{left:margin,right:margin},
+      styles:{font:'helvetica',fontSize:9,cellPadding:5,textColor:corInk},
+      headStyles:{fillColor:[42,26,27],textColor:[255,230,230],fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[250,240,240]},
+      columnStyles:{
+        6:{textColor:corRed,fontStyle:'bold',halign:'right'}
+      }
+    });
+
+    const pageHeight=doc.internal.pageSize.getHeight();
+    const totalPages=doc.internal.getNumberOfPages();
+    for(let i=1;i<=totalPages;i++){
+      doc.setPage(i);
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...corDim);
+      doc.text('Ke Home Logística · Produtividade de Pedidos', margin, pageHeight-24);
+      doc.text('Página '+i+' de '+totalPages, pageWidth-margin, pageHeight-24, {align:'right'});
+    }
+
+    const nomeArquivo='pedidos_atrasados_'+agora.toISOString().slice(0,10)+'.pdf';
+    doc.save(nomeArquivo);
+  }catch(err){
+    console.error('Erro ao gerar PDF de pedidos atrasados:', err);
+    alert('Ocorreu um erro ao gerar o PDF: '+(err&&err.message?err.message:err));
+  }
 }
 
 // ═══════════════════════════════════════════
