@@ -3063,7 +3063,10 @@ function renderPrevisao(){
   }).sort((a,b)=>a.rem-b.rem); // mais atrasado (rem mais negativo) primeiro, depois menor tempo restante primeiro
   const html=!pend.length?'<div class="empty"><div class="empty-s">Nenhum pedido pendente.</div></div>':pendCalc.map(({p,rem:remRaw})=>{
     const sec=p.vols*refSec[p.tipo],elapsed=calcElapsedPedido(p),rem=Math.max(0,remRaw);
-    const eta=new Date(Date.now()+rem*1000).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    // Usa remRaw (sem travar em 0) para calcular o horário previsto: assim o "Previsto"
+    // fica fixo no horário-alvo real (início + tempo total + pausas), em vez de virar
+    // sempre "agora" quando o pedido atrasa (o que fazia o valor andar junto do relógio).
+    const eta=new Date(Date.now()+remRaw*1000).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const pct=Math.min(100,Math.round(elapsed/sec*100));
     const atrasado=!p.pausado&&!p.tempoParado&&remRaw<=0;
     const barColor=p.tempoParado?'var(--orange)':p.pausado?'var(--yellow)':atrasado?'var(--red)':colors[p.tipo];
