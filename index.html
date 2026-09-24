@@ -1101,7 +1101,10 @@ function mergeColecao(remoteArr, localArr, tombMap, preferLocal){
         byId[local.id]=local;
       } else if(remoteFinal && localFinal){
         // Ambos finalizados → usar o mais recente (finalizadoEm, com fallback em terminoTs)
-        const rt=remote.finalizadoEm||remote.terminoTs||0, lt=local.finalizadoEm||local.terminoTs||0;
+        // atualizadoEm entra na comparação para que a edição de um pedido já finalizado
+        // (ex.: mudar o tipo) não seja sobrescrita pela cópia remota antiga.
+        const rt=Math.max(remote.finalizadoEm||remote.terminoTs||0, remote.atualizadoEm||0);
+        const lt=Math.max(local.finalizadoEm||local.terminoTs||0, local.atualizadoEm||0);
         byId[local.id]=(rt>=lt) ? remote : local;
       } else {
         // Nenhum finalizado de vez (pode haver falta registrada em um dos dois) →
@@ -1113,7 +1116,13 @@ function mergeColecao(remoteArr, localArr, tombMap, preferLocal){
         } else if(localTerminado && !remoteTerminado){
           byId[local.id]=local;
         } else if(remoteTerminado && localTerminado){
-          byId[local.id]=(remote.terminoTs||0)>(local.terminoTs||0) ? remote : local;
+          const rT=remote.terminoTs||0, lT=local.terminoTs||0;
+          if(rT!==lT){
+            byId[local.id]=rT>lT ? remote : local;
+          } else {
+            // Mesmo término: a versão editada por último (atualizadoEm) prevalece.
+            byId[local.id]=(remote.atualizadoEm||0)>(local.atualizadoEm||0) ? remote : local;
+          }
         } else {
           // Nenhum dos dois tem termino/terminoTs (ex.: pedido em aberto que só foi
           // pausado/retomado neste aparelho). Antes, o padrão aqui era sempre usar o
@@ -2444,6 +2453,11 @@ function salvarEdicaoPedido(){
     p.faltaRefs=novasFaltaRefs;
     p.faltaMotivo=novoFaltaMotivo;
   }
+  // Necessário p/ o merge de sincronização (mergeColecao) reconhecer que esta versão local
+  // é mais recente que a da nuvem. Sem isso, a edição (ex.: tipo do pedido) ficava com
+  // atualizadoEm vazio, empatava com a cópia remota antiga e a remota vencia no sync,
+  // fazendo o valor antigo "voltar".
+  p.atualizadoEm=Date.now();
   
   // Se o pedido foi finalizado, recalcular duração com novo início
   if(p.finalizado && p.termino){
