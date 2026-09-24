@@ -398,7 +398,7 @@ button:disabled:hover{background:inherit;color:inherit}
         <span>Pendentes: <b style="color:var(--cyan);font-size:13px" id="prev-pend">0</b></span>
         <input type="text" id="prev-busca" oninput="renderPrevisao()" placeholder="🔎 Buscar por OS, carregamento ou colaborador..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;outline:none;flex:1;min-width:140px">
         <button type="button" id="prev-pdf-btn" onclick="exportarAtrasadosPDF()" style="background:var(--red);border:1px solid var(--red);border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer;white-space:nowrap">📄 Exportar Atrasados PDF</button>
-        <button type="button" id="prev-pdf-falta-btn" onclick="exportarFaltasPDF()" style="background:#ff8c1a;border:1px solid #ff8c1a;border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer;white-space:nowrap">📄 Exportar Faltas PDF</button>
+        <button type="button" id="prev-pdf-falta-btn" onclick="exportarFaltasPDF()" style="background:var(--orange);border:1px solid var(--orange);border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer;white-space:nowrap">📄 Exportar Faltas PDF</button>
       </div>
       <div id="prev-lista" style="max-height:380px;overflow-y:auto;overflow-x:hidden;padding-right:6px"><div class="empty"><div class="empty-s">Nenhum pedido pendente.</div></div></div>
     </div>
@@ -633,6 +633,11 @@ create policy "allow anon all" on logiflow_db
       <label style="display:block;margin-bottom:8px">Participantes adicionais</label>
       <div id="e-participantes-list"></div>
       <button type="button" class="btn-sec" style="font-size:12px;margin-top:4px" onclick="addParticipanteRowEdit()">+ Adicionar participante</button>
+    </div>
+    <div id="e-falta-box" style="display:none;background:var(--bg);border-radius:8px;padding:12px;margin-bottom:10px;border:1px solid rgba(255,71,87,.3)">
+      <label style="display:block;margin-bottom:8px;color:var(--red)">⚠ Referências em falta registradas</label>
+      <div id="e-falta-refs-list"></div>
+      <button type="button" class="btn-sec" style="font-size:12px;margin-top:4px" onclick="addEditFaltaRefRow()">+ Adicionar referência</button>
     </div>
     <div class="popup-btns">
       <button class="btn-sec" onclick="closeOverlay('ov-edit')">Cancelar</button>
@@ -2288,6 +2293,52 @@ function getMembros(p){
 }
 function getMembro(p,idx){ return getMembros(p)[idx]; }
 
+// Lacunas de "Referências em falta" dentro do popup de Editar Pedido — mesmo padrão
+// visual/estrutural das lacunas usadas ao registrar a falta na finalização (falta-ref-card),
+// mas com IDs próprios para não conflitar com o popup de finalização.
+let editFaltaRefSeq=0;
+function addEditFaltaRefRow(ref,qtd){
+  const rid='efref-'+(editFaltaRefSeq++);
+  const row=document.createElement('div');
+  row.className='falta-ref-card';
+  row.id=rid;
+  row.innerHTML='<div class="falta-ref-fields">'+
+    '<div class="field"><label>Referência</label><input type="text" class="falta-ref" value="'+(ref?String(ref).replace(/"/g,'&quot;'):'')+'" placeholder="Ex: 99001" autocomplete="off"></div>'+
+    '<div class="field"><label>Qtd. caixas</label><input type="number" class="falta-qtd" value="'+(qtd||'')+'" placeholder="0" min="1"></div>'+
+    '</div>'+
+    '<button type="button" class="btn-del" title="Remover" onclick="removeEditFaltaRefRow(\''+rid+'\')">✕</button>';
+  document.getElementById('e-falta-refs-list').appendChild(row);
+  updateEditFaltaRefsScroll();
+}
+function removeEditFaltaRefRow(rid){
+  const row=document.getElementById(rid);
+  if(row) row.remove();
+  updateEditFaltaRefsScroll();
+}
+function updateEditFaltaRefsScroll(){
+  const list=document.getElementById('e-falta-refs-list');
+  if(!list) return;
+  const rows=list.children;
+  if(!rows.length){ list.style.maxHeight=''; return; }
+  const visiveis=Math.min(3,rows.length);
+  const gap=5;
+  let h=0;
+  for(let i=0;i<visiveis;i++) h+=rows[i].getBoundingClientRect().height;
+  h+=gap*(visiveis-1);
+  list.style.maxHeight=h+'px';
+}
+function collectEditFaltaRefs(){
+  const refs=[]; let incompleto=false;
+  document.querySelectorAll('#e-falta-refs-list .falta-ref-card').forEach(row=>{
+    const ref=row.querySelector('.falta-ref').value.trim();
+    const qtd=parseInt(row.querySelector('.falta-qtd').value)||0;
+    if(!ref && !qtd) return;
+    if(!ref || qtd<=0){ incompleto=true; return; }
+    refs.push({ref,qtd});
+  });
+  return {refs,incompleto};
+}
+
 // EDITAR PEDIDO
 let editTarget=null;
 function openEditarPedido(id){
@@ -2311,6 +2362,18 @@ function openEditarPedido(id){
     p.participantes.forEach(part=>addParticipanteRowEdit(part.nome,part.qtd));
   } else {
     document.getElementById('e-dividido-box').style.display='none';
+  }
+
+  document.getElementById('e-falta-refs-list').innerHTML='';
+  if(p.falta){
+    document.getElementById('e-falta-box').style.display='block';
+    if(p.faltaRefs && p.faltaRefs.length){
+      p.faltaRefs.forEach(r=>addEditFaltaRefRow(r.ref,r.qtd));
+    } else {
+      addEditFaltaRefRow();
+    }
+  } else {
+    document.getElementById('e-falta-box').style.display='none';
   }
 
   openOverlay('ov-edit');
@@ -2341,6 +2404,16 @@ function salvarEdicaoPedido(){
     if(!participantes.length){notify('Adicione ao menos um participante com nome e quantidade, ou desmarque "Pedido dividido".','error');return;}
   }
 
+  // Se o pedido tem falta pendente, valida e recolhe as referências editadas
+  let novasFaltaRefs=null, novoFaltaMotivo=null;
+  if(p.falta){
+    const fr=collectEditFaltaRefs();
+    if(fr.incompleto){notify('Preencha a referência e a quantidade de caixas em todas as lacunas da falta (ou remova as vazias).','error');return;}
+    if(!fr.refs.length){notify('Informe ao menos uma referência e a quantidade de caixas em falta.','error');return;}
+    novasFaltaRefs=fr.refs;
+    novoFaltaMotivo=formatFaltaRefs(fr.refs);
+  }
+
   // Se a composição de participantes mudou e já havia confirmações parciais registradas,
   // reinicia essas confirmações — os índices de conclusão dependem da lista de participantes.
   let conclusoesResetadas=false;
@@ -2367,6 +2440,10 @@ function salvarEdicaoPedido(){
   p.inicioTs=new Date(p.data+'T'+p.inicio).getTime();
   p.dividido=dividido;
   p.participantes=participantes;
+  if(p.falta){
+    p.faltaRefs=novasFaltaRefs;
+    p.faltaMotivo=novoFaltaMotivo;
+  }
   
   // Se o pedido foi finalizado, recalcular duração com novo início
   if(p.finalizado && p.termino){
@@ -2595,8 +2672,8 @@ function deletePedido(id){
 }
 function pausaBtnHtml(p){
   return p.pausado?
-    '<button class="btn-fin" style="background:rgba(255,214,10,.15);color:var(--yellow);border-color:rgba(255,214,10,.3)" onclick="retomarPedido('+p.id+')">▶ Retomar</button>':
-    '<button class="btn-sec" style="font-size:11px;padding:4px 10px" onclick="pausarPedido('+p.id+')">⏸ Pausar</button>';
+    '<button class="btn-fin" style="background:rgba(255,214,10,.15);color:var(--yellow);border-color:rgba(255,214,10,.3);white-space:nowrap" onclick="retomarPedido('+p.id+')">▶ Retomar</button>':
+    '<button class="btn-sec" style="font-size:11px;padding:4px 10px;white-space:nowrap" onclick="pausarPedido('+p.id+')">⏸ Pausar</button>';
 }
 function pausarPedido(id){
   const p=DB.find(x=>x.id===id);
@@ -2625,7 +2702,7 @@ function retomarPedido(id){
 function tick(){
   document.querySelectorAll('.timer-live').forEach(el=>{
     const p=DB.find(x=>x.id===parseInt(el.dataset.id));
-    if(p&&!p.finalizado) el.textContent=(p.pausado?'⏸ ':'')+fmtSec(calcElapsedPedido(p));
+    if(p&&!p.finalizado) el.textContent=(p.tempoParado?'⚠ ':(p.pausado?'⏸ ':''))+fmtSec(calcElapsedPedido(p));
   });
   document.querySelectorAll('.emp-timer-live').forEach(el=>{
     const id=parseInt(el.dataset.id);
@@ -2716,12 +2793,12 @@ function renderAtivos(){
     '<div class="tbl-wrap"><table><thead><tr><th>Carregamento</th><th>Colaborador</th><th>Tipo</th><th>Status</th><th>Vols</th><th>Início</th><th>Decorrido</th><th>Ação</th></tr></thead><tbody>'+
     ativos.map(p=>{
       const isDiv=p.dividido&&p.participantes&&p.participantes.length;
-      const editBtn='<button class="btn-edit" onclick="openEditarPedido('+p.id+')" style="background:var(--orange);color:var(--bg);border:none;padding:3px 7px;border-radius:4px;font-size:10.5px;font-weight:600;cursor:pointer">✎ Edit.</button>';
+      const editBtn='<button class="btn-sec" onclick="openEditarPedido('+p.id+')" style="font-size:11px;padding:4px 10px;white-space:nowrap">✎ Edit.</button>';
       const delBtn='<button class="btn-del" onclick="deletePedido('+p.id+')" title="Cancelar">✕</button>';
-      const acaoCell=(isDiv?membrosAcaoHtml(p):(p.falta?'<button class="btn-fin" style="background:var(--red);border-color:var(--red)" onclick="resolverFalta('+p.id+')">⚠ Falta</button>':'<button class="btn-fin" onclick="openFinish('+p.id+')" '+(p.pausado?'disabled title="Retome o pedido para finalizar"':'')+'>✓ Fin.</button>'))+(p.tempoParado?'':pausaBtnHtml(p))+editBtn+delBtn;
+      const acaoCell=(isDiv?membrosAcaoHtml(p):(p.falta?'<button class="btn-fin" style="background:var(--orange);border-color:var(--orange);color:#fff" onclick="resolverFalta('+p.id+')">⚠ Resolver falta</button>':'<button class="btn-fin" onclick="openFinish('+p.id+')" '+(p.pausado?'disabled title="Retome o pedido para finalizar"':'')+'>✓ Fin.</button>'))+(p.tempoParado?'':pausaBtnHtml(p))+editBtn+delBtn;
       const rowStyle=p.pausado?' style="opacity:.75"':'';
-      const faltaBadge=p.falta?' <span class="badge" style="background:rgba(255,71,87,.18);color:var(--red)">⚠ Falta</span>':'';
-      return '<tr'+rowStyle+'><td><b>'+p.cargo+'</b>'+(isDiv?' <span class="split-icon" title="Pedido dividido">👥</span>':'')+(p.pausado?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':'')+faltaBadge+'</td><td>'+p.colab+'</td><td><span class="tipo-tag '+p.tipo+'">'+(p.tipo==='aberto'?'Aberto':'Fechado')+'</span></td><td><span class="badge '+p.status+'">'+(p.status==='prioridade'?'🔴 Prior.':'Normal')+'</span></td><td>'+p.vols+'</td><td>'+p.inicio+'</td><td><span class="timer-live" data-id="'+p.id+'" style="'+(p.pausado?'color:var(--yellow)':(p.tempoParado?'color:var(--red)':''))+'">'+(p.tempoParado?'⚠ ':(p.pausado?'⏸ ':''))+fmtSec(calcElapsedPedido(p))+'</span></td><td><div class="acao-cell">'+acaoCell+'</div></td></tr>';
+      const faltaBadge=p.falta?' <span class="badge" style="background:rgba(255,107,53,.18);color:var(--orange)">⚠ Falta</span>':'';
+      return '<tr'+rowStyle+'><td><b>'+p.cargo+'</b>'+(isDiv?' <span class="split-icon" title="Pedido dividido">👥</span>':'')+(p.pausado?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':'')+faltaBadge+'</td><td>'+p.colab+'</td><td><span class="tipo-tag '+p.tipo+'">'+(p.tipo==='aberto'?'Aberto':'Fechado')+'</span></td><td><span class="badge '+p.status+'">'+(p.status==='prioridade'?'🔴 Prior.':'Normal')+'</span></td><td>'+p.vols+'</td><td>'+p.inicio+'</td><td><span class="timer-live" data-id="'+p.id+'" style="'+(p.falta?'color:var(--orange)':'color:var(--yellow)')+'">'+(p.tempoParado?'⚠ ':(p.pausado?'⏸ ':''))+fmtSec(calcElapsedPedido(p))+'</span></td><td><div class="acao-cell">'+acaoCell+'</div></td></tr>';
     }).join('')+
     '</tbody></table></div>':
     '<div class="empty"><div class="empty-s">Nenhum pedido ativo.</div></div>';
@@ -2779,14 +2856,15 @@ function renderPedidos(){
   const tbody=document.getElementById('tbl-pedidos');
   if(!data.length){tbody.innerHTML='<tr><td colspan="11"><div class="empty" style="padding:20px"><div class="empty-s">Nenhum pedido encontrado.</div></div></td></tr>';return;}
   tbody.innerHTML=data.map(p=>{
-    const dur=p.finalizado?fmtSec(p.duracao):'<span class="timer-live" data-id="'+p.id+'" style="'+(p.pausado?'color:var(--yellow)':'')+'">'+(p.pausado?'⏸ ':'')+fmtSec(calcElapsedPedido(p))+'</span>';
-    const media=(p.finalizado&&p.vols>0)?fmtMPS(p.duracao/p.vols):'—';
     const isDiv=p.dividido&&p.participantes&&p.participantes.length;
-    const finBtn=p.falta?'<button class="btn-fin" style="background:var(--red);border-color:var(--red)" onclick="resolverFalta('+p.id+')">⚠ Falta</button>':'<button class="btn-fin" onclick="openFinish('+p.id+')" '+(p.pausado?'disabled title="Retome o pedido para finalizar"':'')+'>✓ Fin.</button>';
-    const acoes=p.finalizado?'<button class="btn-edit" onclick="openEditarFinalizacao('+p.id+')" style="background:var(--blue);color:#fff;border:none;padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">🕒 Editar Finalização</button> <button class="btn-del" onclick="deletePedido('+p.id+')">✕</button>':(isDiv?'<button class="btn-edit" onclick="openEditarPedido('+p.id+')" style="background:var(--orange);color:var(--bg);border:none;padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">✎ Editar</button> '+(p.tempoParado?'':pausaBtnHtml(p))+' <button class="btn-del" onclick="deletePedido('+p.id+')">✕</button>':'<button class="btn-edit" onclick="openEditarPedido('+p.id+')" style="background:var(--orange);color:var(--bg);border:none;padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">✎ Editar</button> '+finBtn+' '+(p.tempoParado?'':pausaBtnHtml(p))+' <button class="btn-del" onclick="deletePedido('+p.id+')">✕</button>');
+    const teveFalta=isDiv?(p.conclusoes&&Object.values(p.conclusoes).some(c=>c.faltaMotivo)):!!p.faltaMotivo;
+    const dur=p.finalizado?('<span style="'+(teveFalta?'color:var(--orange)':'')+'">'+fmtSec(p.duracao)+'</span>'):'<span class="timer-live" data-id="'+p.id+'" style="'+(p.tempoParado?'color:var(--orange)':(p.pausado?'color:var(--yellow)':''))+'">'+(p.tempoParado?'⚠ ':(p.pausado?'⏸ ':''))+fmtSec(calcElapsedPedido(p))+'</span>';
+    const media=(p.finalizado&&p.vols>0)?fmtMPS(p.duracao/p.vols):'—';
+    const finBtn=p.falta?'<button class="btn-fin" style="background:var(--orange);border-color:var(--orange);color:#fff" onclick="resolverFalta('+p.id+')">⚠ Resolver falta</button>':'<button class="btn-fin" onclick="openFinish('+p.id+')" '+(p.pausado?'disabled title="Retome o pedido para finalizar"':'')+'>✓ Fin.</button>';
+    const acoes=p.finalizado?'<button class="btn-edit" onclick="openEditarFinalizacao('+p.id+')" style="background:var(--blue);color:#fff;border:none;padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">🕒 Editar Finalização</button> <button class="btn-del" onclick="deletePedido('+p.id+')">✕</button>':(isDiv?'<button class="btn-sec" onclick="openEditarPedido('+p.id+')" style="font-size:11px;padding:4px 10px;white-space:nowrap">✎ Editar</button> '+(p.tempoParado?'':pausaBtnHtml(p))+' <button class="btn-del" onclick="deletePedido('+p.id+')">✕</button>':'<button class="btn-sec" onclick="openEditarPedido('+p.id+')" style="font-size:11px;padding:4px 10px;white-space:nowrap">✎ Editar</button> '+finBtn+' '+(p.tempoParado?'':pausaBtnHtml(p))+' <button class="btn-del" onclick="deletePedido('+p.id+')">✕</button>');
     const splitIcon=isDiv?' <span class="split-icon" title="Pedido dividido — clique na linha para ver os membros">👥</span>':'';
     const pausaBadge=(p.pausado&&!p.finalizado)?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':'';
-    const faltaBadge=(p.falta&&!p.finalizado)?' <span class="badge" style="background:rgba(255,71,87,.18);color:var(--red)">⚠ Falta</span>':'';
+    const faltaBadge=(p.falta&&!p.finalizado)?' <span class="badge" style="background:rgba(255,107,53,.18);color:var(--orange)">⚠ Falta</span>':'';
     const rowClass=isDiv?'pedido-row expandable':'pedido-row';
     const rowClick=isDiv?' onclick="toggleDetalhe('+p.id+')"':'';
     let html='<tr class="'+rowClass+'" id="row-'+p.id+'"'+rowClick+'><td><b>'+p.cargo+'</b>'+splitIcon+pausaBadge+faltaBadge+'</td><td class="td-collab">'+p.colab+'</td><td>'+p.data+'</td><td><span class="tipo-tag '+p.tipo+'">'+(p.tipo==='aberto'?'Aberto':'Fechado')+'</span></td><td><span class="badge '+p.status+'">'+(p.status==='prioridade'?'🔴 Prior.':'Normal')+'</span></td><td>'+p.vols+'</td><td>'+p.inicio+'</td><td>'+(p.termino||'—')+'</td><td class="td-time">'+dur+'</td><td class="td-time" style="color:var(--cyan)">'+media+'</td><td style="display:flex;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">'+acoes+'</td></tr>';
@@ -2973,15 +3051,15 @@ function renderPrevisao(){
     const sec=p.vols*refSec[p.tipo],elapsed=calcElapsedPedido(p),rem=Math.max(0,remRaw);
     const eta=new Date(Date.now()+rem*1000).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     const pct=Math.min(100,Math.round(elapsed/sec*100));
-    const atrasado=!p.pausado&&remRaw<=0;
-    const barColor=p.pausado?'var(--yellow)':atrasado?'var(--red)':colors[p.tipo];
+    const atrasado=!p.pausado&&!p.tempoParado&&remRaw<=0;
+    const barColor=p.tempoParado?'var(--orange)':p.pausado?'var(--yellow)':atrasado?'var(--red)':colors[p.tipo];
     const itemStyle=p.pausado?'border:1px solid rgba(255,214,10,.4);background:rgba(255,214,10,.06)':atrasado?'border:1px solid var(--red);background:rgba(255,71,87,.1);box-shadow:0 0 0 1px rgba(255,71,87,.25)':'';
     const isDiv=p.dividido&&p.participantes&&p.participantes.length;
-    const finBtn=p.falta?'<button class="btn-fin" style="margin-top:3px;background:var(--red);border-color:var(--red)" onclick="resolverFalta('+p.id+')">⚠ Falta</button>':'<button class="btn-fin" style="margin-top:3px" onclick="openFinish('+p.id+')" '+(p.pausado?'disabled title="Retome o pedido para finalizar"':'')+'>✓ Finalizar</button>';
+    const finBtn=p.falta?'<button class="btn-fin" style="margin-top:3px;background:var(--orange);border-color:var(--orange);color:#fff" onclick="resolverFalta('+p.id+')">⚠ Resolver falta</button>':'<button class="btn-fin" style="margin-top:3px" onclick="openFinish('+p.id+')" '+(p.pausado?'disabled title="Retome o pedido para finalizar"':'')+'>✓ Finalizar</button>';
     const acaoHtml=(isDiv?membrosAcaoHtml(p):finBtn)+(p.tempoParado?'':'<div style="margin-top:3px">'+pausaBtnHtml(p)+'</div>');
     const unidade=p.tipo==='fechado'?'cxs':'refs';
     const etaHtml=p.tempoParado?'⚠ Falta':(p.pausado?'⏸ Pausado':(atrasado?'⚡ Atrasado':eta));
-    return '<div class="prev-item" style="'+(p.tempoParado?'border:1px solid var(--red);background:rgba(255,71,87,.1);box-shadow:0 0 0 1px rgba(255,71,87,.25)':itemStyle)+'"><div class="prev-left"><div class="prev-icon" style="background:'+colors[p.tipo]+'22;font-size:12px">'+icons[p.tipo]+'</div><div><div class="prev-cargo"><b>'+p.cargo+'</b> &nbsp; <span class="tipo-tag '+p.tipo+'">'+p.tipo+'</span>'+(p.tempoParado?' <span class="badge" style="background:rgba(255,71,87,.18);color:var(--red)">⚠ Falta registrada</span>':(p.pausado?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':(atrasado?' <span class="badge priority">⚠ Atrasado</span>':'')))+(isDiv?' <span class="split-icon" title="Pedido dividido">👥</span>':'')+'</div><div class="prev-collab">'+p.colab+' · '+p.vols+' '+unidade+' · início: '+p.inicio+' · <span class="badge '+p.status+'">'+p.status+'</span></div></div></div><div class="prev-eta"><div class="prev-time" style="color:'+barColor+(atrasado?';font-weight:800':'')+'">'+etaHtml+'</div><div class="prev-label">⏱ Decorrido '+fmtSec(elapsed)+'</div><div class="prev-label">Previsto: '+eta+'</div>'+acaoHtml+'</div><div class="prev-bar-row"><div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div></div></div>';
+    return '<div class="prev-item" style="'+(p.tempoParado?'border:1px solid var(--orange);background:rgba(255,107,53,.1);box-shadow:0 0 0 1px rgba(255,107,53,.25)':itemStyle)+'"><div class="prev-left"><div class="prev-icon" style="background:'+colors[p.tipo]+'22;font-size:12px">'+icons[p.tipo]+'</div><div><div class="prev-cargo"><b>'+p.cargo+'</b> &nbsp; <span class="tipo-tag '+p.tipo+'">'+p.tipo+'</span>'+(p.tempoParado?' <span class="badge" style="background:rgba(255,107,53,.18);color:var(--orange)">⚠ Falta registrada</span>':(p.pausado?' <span class="badge" style="background:rgba(255,214,10,.15);color:var(--yellow)">⏸ Pausado</span>':(atrasado?' <span class="badge priority">⚠ Atrasado</span>':'')))+(isDiv?' <span class="split-icon" title="Pedido dividido">👥</span>':'')+'</div><div class="prev-collab">'+p.colab+' · '+p.vols+' '+unidade+' · início: '+p.inicio+' · <span class="badge '+p.status+'">'+p.status+'</span></div></div></div><div class="prev-eta"><div class="prev-time" style="color:'+barColor+(atrasado?';font-weight:800':'')+'">'+etaHtml+'</div><div class="prev-label">⏱ Decorrido '+fmtSec(elapsed)+'</div><div class="prev-label">Previsto: '+eta+'</div>'+acaoHtml+'</div><div class="prev-bar-row"><div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div></div></div>';
   }).join('');
   const lista=document.getElementById('prev-lista'); if(lista) lista.innerHTML=html;
   updateExportBtnsState();
@@ -3014,7 +3092,7 @@ function coletarPedidosAtrasados(){
   const pend=DB.filter(x=>!x.finalizado);
   return pend.map(p=>{
     const sec=p.vols*refSec[p.tipo],elapsed=calcElapsedPedido(p),remRaw=sec-elapsed;
-    const atrasado=!p.pausado&&remRaw<=0;
+    const atrasado=!p.pausado&&!p.tempoParado&&remRaw<=0;
     return {p,remRaw,atrasado};
   }).filter(x=>x.atrasado).sort((a,b)=>a.remRaw-b.remRaw);
 }
