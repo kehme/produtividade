@@ -3056,7 +3056,7 @@ function renderPrevisao(){
   const pend=DB.filter(x=>!x.finalizado&&(!busca||matchBuscaPedido(x,busca)));
   const pendEl=document.getElementById('prev-pend');
   if(pendEl) pendEl.textContent=pend.length;
-  const refSec={aberto:150,fechado:150},icons={aberto:'📥',fechado:'📦'},colors={aberto:'var(--cyan)',fechado:'var(--blue)'};
+  const refSec={aberto:150,fechado:150},icons={aberto:'📥',fechado:'📦'},colors={aberto:'var(--cyan)',fechado:'var(--cyan)'};
   const pendCalc=pend.map(p=>{
     const sec=p.vols*refSec[p.tipo],elapsed=calcElapsedPedido(p),rem=sec-elapsed;
     return {p,rem};
