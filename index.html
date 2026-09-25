@@ -438,6 +438,11 @@ button:disabled:hover{background:inherit;color:inherit}
         <input type="date" id="filt-periodo-fim" onchange="onFiltroTodosChange()" style="background:transparent;border:none;color:var(--text);font-size:12px;outline:none;padding:4px 0">
       </span>
       <button type="button" class="btn-sec" style="font-size:12px" onclick="document.getElementById('filt-periodo-ini').value='';document.getElementById('filt-periodo-fim').value='';onFiltroTodosChange()">✕ Limpar período</button>
+      <select id="filt-ordem" onchange="onFiltroTodosChange()" style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;outline:none">
+        <option value="">Ordem padrão</option>
+        <option value="asc">Ordem: mais antigo → mais recente</option>
+        <option value="desc">Ordem: mais recente → mais antigo</option>
+      </select>
       <input type="text" id="filt-busca" oninput="onFiltroTodosChange()" placeholder="🔎 Buscar por OS, carregamento ou colaborador..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;outline:none;flex:1;min-width:180px">
     </div>
     <div class="tbl-wrap tbl-scroll" style="max-height:560px;overflow-y:auto">
@@ -898,6 +903,7 @@ const LS_COLABMATDATA = 'logiflow_colab_matriculas';
 const LS_CALCOVDATA = 'logiflow_calc_overrides';
 const LS_TOMB = 'logiflow_tomb';
 const LS_CFG  = 'logiflow_cfg';
+const LS_FILTROS_TODOS = 'logiflow_filtros_todos';
 let DB  = [];
 let EMPDB = [];
 let PICKDB = [];
@@ -1463,8 +1469,11 @@ function showTab(name,ev){
   // o que o usuário escolher nos filtros durante a sessão.
   if(name==='todos' && !todosTabInicializada){
     todosTabInicializada=true;
-    const mesEl=document.getElementById('filt-mes');
-    if(mesEl) mesEl.value=todayStr().slice(0,7);
+    const restaurou=loadFiltrosTodos();
+    if(!restaurou){
+      const mesEl=document.getElementById('filt-mes');
+      if(mesEl) mesEl.value=todayStr().slice(0,7);
+    }
   }
   if(name==='todos'){ onFiltroTodosChange(); } else { refreshAll(); }
 }
@@ -2743,11 +2752,48 @@ function hidePedidosLoading(){
 // instantaneamente — evita recomputar/redesenhar a tabela em excesso.
 function onFiltroTodosChange(){
   showPedidosLoading();
+  saveFiltrosTodos();
   clearTimeout(todosFiltroTimer);
   todosFiltroTimer=setTimeout(()=>{
     renderPedidos();
     hidePedidosLoading();
   },300);
+}
+// Salva a configuração atual dos filtros (tipo, status, em andamento/finalizado, mês,
+// período e ordenação) no localStorage, para que fiquem como o usuário deixou da
+// última vez que usou o app. A busca por texto não é salva, pois é algo pontual da sessão.
+function saveFiltrosTodos(){
+  try{
+    const f={
+      tipo:document.getElementById('filt-tipo')?.value||'',
+      status:document.getElementById('filt-status')?.value||'',
+      fin:document.getElementById('filt-fin')?.value||'',
+      mes:document.getElementById('filt-mes')?.value||'',
+      periodoIni:document.getElementById('filt-periodo-ini')?.value||'',
+      periodoFim:document.getElementById('filt-periodo-fim')?.value||'',
+      ordem:document.getElementById('filt-ordem')?.value||''
+    };
+    localStorage.setItem(LS_FILTROS_TODOS,JSON.stringify(f));
+  }catch(e){}
+}
+// Restaura os filtros salvos anteriormente. Retorna true se havia algo salvo (e foi
+// restaurado), ou false caso contrário — usado para decidir se ainda aplicamos o
+// padrão de "mês atual" na primeira abertura da aba.
+function loadFiltrosTodos(){
+  try{
+    const r=localStorage.getItem(LS_FILTROS_TODOS);
+    if(!r) return false;
+    const f=JSON.parse(r);
+    const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+    set('filt-tipo',f.tipo);
+    set('filt-status',f.status);
+    set('filt-fin',f.fin);
+    set('filt-mes',f.mes);
+    set('filt-periodo-ini',f.periodoIni);
+    set('filt-periodo-fim',f.periodoFim);
+    set('filt-ordem',f.ordem);
+    return true;
+  }catch(e){ return false; }
 }
 
 // ═══════════════════════════════════════════
@@ -2827,6 +2873,17 @@ function membrosAcaoHtml(p){
     return '<button class="btn-fin" style="font-size:11px;padding:3px 8px" onclick="openFinish('+p.id+','+i+')" '+(p.pausado?'disabled title="Retome o pedido para finalizar"':'')+'>✓ '+m.nome+'</button>';
   }).join('')+'</div>';
 }
+// Retorna um timestamp (ms) usado para ordenar os pedidos por data/hora de finalização.
+// Prioriza finalizadoEm (registrado no momento em que o pedido foi finalizado); pedidos
+// sem esse campo (em andamento, ou dados antigos) usam como aproximação a data+hora de
+// término ou início.
+function pedidoOrdKey(p){
+  if(p.finalizadoEm) return p.finalizadoEm;
+  const hora=p.termino||p.inicio||'00:00';
+  if(!p.data) return 0;
+  const ts=new Date(p.data+'T'+hora).getTime();
+  return isNaN(ts)?0:ts;
+}
 function renderPedidos(){
   const tipo=document.getElementById('filt-tipo')?.value||'';
   const status=document.getElementById('filt-status')?.value||'';
@@ -2844,28 +2901,40 @@ function renderPedidos(){
   if(periodoIni) data=data.filter(x=>x.data && x.data>=periodoIni);
   if(periodoFim) data=data.filter(x=>x.data && x.data<=periodoFim);
   if(busca) data=data.filter(x=>matchBuscaPedido(x,busca));
+  const ordem=document.getElementById('filt-ordem')?.value||'';
   
   // Ordenar: pendentes primeiro (por ordem de adição), depois finalizados (por ordem de finalização, mais recentes no final)
-  data.sort((a,b)=>{
-    const aFinalizado=a.finalizado;
-    const bFinalizado=b.finalizado;
-    
-    // Se um é finalizado e outro não, o não finalizado vem primeiro
-    if(aFinalizado!==bFinalizado) return aFinalizado?1:-1;
-    
-    if(!aFinalizado){
-      // Pendentes: ordem de adição (id crescente = mais antigo primeiro)
-      return a.id-b.id;
-    }
-    // Finalizados: ordem de finalização (mais recentes por último)
-    const aEm=a.finalizadoEm||0, bEm=b.finalizadoEm||0;
-    if(aEm&&bEm) return aEm-bEm;
-    if(aEm!==bEm) return aEm?1:-1; // sem finalizadoEm (dados antigos) fica antes
-    // fallback para pedidos antigos sem finalizadoEm: por data+hora de término/início
-    const aStart=(a.data||'')+' '+(a.termino||a.inicio||'');
-    const bStart=(b.data||'')+' '+(b.termino||b.inicio||'');
-    return aStart.localeCompare(bStart);
-  });
+  if(ordem==='asc'||ordem==='desc'){
+    // Ordenação manual escolhida pelo usuário no filtro, baseada no horário/data da
+    // finalização (finalizadoEm). Pedidos ainda em andamento (sem finalizadoEm) usam
+    // como aproximação a data+hora de término (ou início), para não ficarem sem posição.
+    data.sort((a,b)=>{
+      const aKey=pedidoOrdKey(a), bKey=pedidoOrdKey(b);
+      const cmp=aKey-bKey;
+      return ordem==='asc'?cmp:-cmp;
+    });
+  } else {
+    data.sort((a,b)=>{
+      const aFinalizado=a.finalizado;
+      const bFinalizado=b.finalizado;
+      
+      // Se um é finalizado e outro não, o não finalizado vem primeiro
+      if(aFinalizado!==bFinalizado) return aFinalizado?1:-1;
+      
+      if(!aFinalizado){
+        // Pendentes: ordem de adição (id crescente = mais antigo primeiro)
+        return a.id-b.id;
+      }
+      // Finalizados: ordem de finalização (mais recentes por último)
+      const aEm=a.finalizadoEm||0, bEm=b.finalizadoEm||0;
+      if(aEm&&bEm) return aEm-bEm;
+      if(aEm!==bEm) return aEm?1:-1; // sem finalizadoEm (dados antigos) fica antes
+      // fallback para pedidos antigos sem finalizadoEm: por data+hora de término/início
+      const aStart=(a.data||'')+' '+(a.termino||a.inicio||'');
+      const bStart=(b.data||'')+' '+(b.termino||b.inicio||'');
+      return aStart.localeCompare(bStart);
+    });
+  }
   document.getElementById('pedidos-count').textContent='('+data.length+' registro'+(data.length!==1?'s':'')+')';
   const tbody=document.getElementById('tbl-pedidos');
   if(!data.length){tbody.innerHTML='<tr><td colspan="11"><div class="empty" style="padding:20px"><div class="empty-s">Nenhum pedido encontrado.</div></div></td></tr>';return;}
